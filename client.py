@@ -5,8 +5,7 @@ from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 from dotenv import load_dotenv
 
-load_dotenv() 
-print(os.getenv("GROQ_API_KEY"))
+load_dotenv()
 
 async def main():
     server_params = StdioServerParameters(
@@ -20,8 +19,6 @@ async def main():
 
             client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
-            user_input = input("Ask a weather question: ")
-
             groq_tools = [{
                 "type": "function",
                 "function": {
@@ -32,32 +29,46 @@ async def main():
             } for t in tools.tools]
 
             messages = [
-                {"role": "system", "content": "You are a helpful weather assistant. Always use the get_weather tool for weather questions."},
-                {"role": "user", "content": user_input}
+                {"role": "system", "content": "You are a helpful and hyperintelligent assistant with access to live weather data and web search. Use get_weather for weather questions and tavily_search for everything else."},
             ]
 
-            response = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=messages,
-                tools=groq_tools
-            )
+            print("Chat started! Type 'quit' or 'exit' to stop.\n")
 
-            if response.choices[0].message.tool_calls:
-                tool_call = response.choices[0].message.tool_calls[0]
-                city = eval(tool_call.function.arguments)["city"]
+            while True:
+                user_input = input("You: ")
 
-                result = await session.call_tool("get_weather", {"city": city})
-                weather_data = result.content[0].text
+                if user_input.lower() in ["quit", "exit"]:
+                    print("Bye!")
+                    break
 
-                messages.append({"role": "assistant", "content": str(response.choices[0].message)})
-                messages.append({"role": "tool", "content": weather_data, "tool_call_id": tool_call.id})
+                messages.append({"role": "user", "content": user_input})
 
-                final = client.chat.completions.create(
+                response = client.chat.completions.create(
                     model="llama-3.3-70b-versatile",
-                    messages=messages
+                    messages=messages,
+                    tools=groq_tools
                 )
-                print(final.choices[0].message.content)
-            else:
-                print(response.choices[0].message.content)
+
+                if response.choices[0].message.tool_calls:
+                    tool_call = response.choices[0].message.tool_calls[0]
+                    tool_name = tool_call.function.name
+                    tool_args = eval(tool_call.function.arguments)
+
+                    result = await session.call_tool(tool_name, tool_args)
+                    tool_data = result.content[0].text
+
+                    messages.append({"role": "assistant", "content": str(response.choices[0].message)})
+                    messages.append({"role": "tool", "content": tool_data, "tool_call_id": tool_call.id})
+
+                    final = client.chat.completions.create(
+                        model="llama-3.3-70b-versatile",
+                        messages=messages
+                    )
+                    reply = final.choices[0].message.content
+                else:
+                    reply = response.choices[0].message.content
+
+                print(f"AI: {reply}\n")
+                messages.append({"role": "assistant", "content": reply})
 
 asyncio.run(main())
