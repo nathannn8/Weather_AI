@@ -35,10 +35,11 @@ async def main():
             print("Chat started! Type 'quit' or 'exit' to stop.\n")
 
             while True:
-                user_input = input("You: ")
+                loop = asyncio.get_event_loop()
+                user_input = await loop.run_in_executor(None, lambda: input("You: "))
 
                 if user_input.lower() in ["quit", "exit"]:
-                    print("Bye!")
+                    print("AI: Bye!")
                     break
 
                 messages.append({"role": "user", "content": user_input})
@@ -50,15 +51,14 @@ async def main():
                 )
 
                 if response.choices[0].message.tool_calls:
-                    tool_call = response.choices[0].message.tool_calls[0]
-                    tool_name = tool_call.function.name
-                    tool_args = eval(tool_call.function.arguments)
+                    for tool_call in response.choices[0].message.tool_calls:
+                        tool_name = tool_call.function.name
+                        tool_args = eval(tool_call.function.arguments)
+                        result = await session.call_tool(tool_name, tool_args)
+                        tool_data = result.content[0].text
 
-                    result = await session.call_tool(tool_name, tool_args)
-                    tool_data = result.content[0].text
-
-                    messages.append({"role": "assistant", "content": str(response.choices[0].message)})
-                    messages.append({"role": "tool", "content": tool_data, "tool_call_id": tool_call.id})
+                        messages.append({"role": "assistant", "content": str(response.choices[0].message)})
+                        messages.append({"role": "tool", "content": tool_data, "tool_call_id": tool_call.id})
 
                     final = client.chat.completions.create(
                         model="llama-3.3-70b-versatile",
